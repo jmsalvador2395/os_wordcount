@@ -6,4 +6,3 @@ pwordcount.o: pwordcount.c
 
 clean:
 	rm .o
-	rm pwordcount
