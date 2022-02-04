@@ -18,19 +18,36 @@ int main(int argc, char** argv){
 	pid_t pid = fork();
 
 	char r_msg[BUFF_SIZE];
-	char w_msg[BUFF_SIZE];
+	char w_msg[BUFF_SIZE]="hello\n";
 
 	int fd[2];
 
-	if(pid == 0){
-		printf("--child--\n");
+	if(pipe(fd) == -1){
+		fprintf(stderr, "pipe failed\n");
+		return 1;
 	}
-	else if(pid > 0){
+
+	if(pid > 0){
 		printf("--parent--\n");
+		close(fd[R]);
+
+		write(fd[W], w_msg, strlen(w_msg)+1);
+
+		close(fd[W]);
+	}
+	else if(pid == 0){
+		printf("--child--\n");
+		close(fd[W]);
+
+		read(fd[R], r_msg, BUFF_SIZE);
+
+		printf("child msg: %s\n", r_msg);
+
+		close(fd[R]);
 	}
 	else{
-		printf("fork() failed\n")
-		return 1;
+		fprintf(stderr, "fork() failed\n");
+		return 2;
 	}
 
 	return 0;
