@@ -66,6 +66,7 @@ int main(int argc, char **argv){
 	//check for input file name
 	if(argc < 2){
 		printf("input file name required\n");
+		printf("usage: ./pwordcount <file_name>\n")
 		return 0;
 	}
 
