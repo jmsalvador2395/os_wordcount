@@ -22,26 +22,17 @@ void exec_parent(char *file, int *fd){
 	char w_msg[BUFF_SIZE+1]={0};
 
 	printf("--parent--\n");
-	printf("parent R: %d, W: %d\n", fd[0], fd[1]);
 
 	FILE *src_fd;
 	src_fd=fopen(file,"r");
 
 	size_t r_size;
 
-	r_size=fread(w_msg, sizeof(char), BUFF_SIZE, src_fd);
+	r_size=fread(w_msg, 1, BUFF_SIZE, src_fd);
 
+	write(fd[W], w_msg,strlen(w_msg)+1);
 
-	printf("w_msg: %s\n", w_msg);
-	printf("parent before write\n");
-	write(fd[W], w_msg, strlen(w_msg)+1);
-	printf("parent finished write\n");
-
-	sleep(5);
-
-	printf("parent close\n");
 	fclose(src_fd);
-	close(fd[R]);
 	close(fd[W]);
 }
 
@@ -83,12 +74,9 @@ void exec_child(int *fd){
 	//initialize message buffer. +1 for null character
 	char r_msg[BUFF_SIZE+1]={0};
 
-	sleep(1);
-
 	printf("--child--\n");
-	printf("child R: %d, W: %d\n", fd[0], fd[1]);
 
-	close(fd[W]);
+	sleep(1);
 
 	int i=0;
 
@@ -101,7 +89,6 @@ void exec_child(int *fd){
 	printf("word count: %d\n", wc);
 
 	close(fd[R]);
-	printf("child close\n");
 }
 
 int main(int argc, char **argv){
@@ -113,9 +100,6 @@ int main(int argc, char **argv){
 		return 0;
 	}
 
-	//split between parent and child processes
-	pid_t pid = fork();
-	
 	//init pipe
 	int fd[2];
 	if(pipe(fd) == -1){
@@ -123,12 +107,17 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
+	//split between parent and child processes
+	pid_t pid = fork();
+
 	//code for parent to execute
 	if(pid > 0){
+		close(fd[R]);
 		exec_parent(argv[1], fd);
 	}
 	//code for child to execute
 	else if(pid == 0){
+		close(fd[W]);
 		exec_child(fd);
 	}
 	//code for error in fork()
