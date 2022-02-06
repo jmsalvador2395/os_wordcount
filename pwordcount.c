@@ -17,8 +17,13 @@
 
 int count_words(char *msg, int msg_len);
 void itobuff(char *buff, int src);
-void bufftoi(int dest, char *buff);
-void itoa(char *buff, int src);
+void bufftoi(int *dest, char *buff);
+void itoa(char *buff, unsigned int src);
+
+void close_pipe_ends(int *fd_r, int *fd_w){
+	close(fd_r[W]);
+	close(fd_w[R]);
+}
 
 void close_pipes(int *fd){
 	close(fd[R]);
@@ -30,9 +35,10 @@ void close_pipes(int *fd){
  * *file -> file name string
  * *fd -> file descripters for pipe
  */
-void exec_parent(char *file, int *fd){
+void exec_parent(char *file, int *fd_r, int *fd_w){
 	int wc_total=0;
-	int wc=0;
+	unsigned int wc=0;
+	close_pipe_ends(fd_r, fd_w);
 	
 	//initialize message buffer. +1 for null character
 	char w_msg[BUFF_SIZE+1]={0};
@@ -49,24 +55,22 @@ void exec_parent(char *file, int *fd){
 
 	//send message buffer to p2
 	printf("p1: send data to p2\n");
-	write(fd[W], w_msg,strlen(w_msg)+1);
+	write(fd_w[W], w_msg,strlen(w_msg)+1);
 
-	sleep(1);
+
 	//read message buffer from p2
 	printf("p1: read data from p2\n");
-	read(fd[R], r_msg, BUFF_SIZE); 
+	read(fd_r[R], r_msg, BUFF_SIZE); 
 
 	int i;
-	/*
+
 	printf("from p2: ");
+	bufftoi(&wc, r_msg);
 	for(i=0; i<BUFF_SIZE; i++){
 		printf("%02x ", r_msg[i]);
 	}
 	printf("\n");
 	
-	bufftoi(wc, r_msg);
-	*/
-	wc=atoi(r_msg);
 	printf("wc: %d\n", wc);
 
 	wc_total+=wc;
@@ -76,7 +80,7 @@ void exec_parent(char *file, int *fd){
 
 	printf("p1: exit\n");
 	fclose(src_fd);
-	close_pipes(fd);
+	//close_pipes(fd);
 }
 
 /*
@@ -84,8 +88,10 @@ void exec_parent(char *file, int *fd){
  *
  * *fd -> file descriptors for pipe
  */
-void exec_child(int *fd){
+void exec_child(int *fd_r, int *fd_w){
 	int wc=0;
+
+	close_pipe_ends(fd_r, fd_w);
 
 	//initialize message buffer. +1 for null character
 	unsigned char w_msg[BUFF_SIZE+1]={0};
@@ -95,13 +101,12 @@ void exec_child(int *fd){
 
 	//read data from p1
 	printf("p2: read data from p1\n");
-	read(fd[R], r_msg, BUFF_SIZE);
+	read(fd_r[R], r_msg, BUFF_SIZE);
 
 	//count words
 	printf("p2: counting words\n");
 	wc=count_words(r_msg, strlen(r_msg));
-	
-	/*
+
 	itobuff(w_msg, wc);
 
 	printf("to p1: ");
@@ -109,17 +114,12 @@ void exec_child(int *fd){
 		printf("%02x ", w_msg[i]);
 	}
 	printf("\n");
-	*/
-	printf("converting to str\n");
 
-	itoa(w_msg, wc);
-
-	printf("itoa: %s\n", w_msg);
 	//send word count back to p1
 	printf("p2: send result back to p1\n");
-	write(fd[W], w_msg, 5);
+	write(fd_w[W], w_msg, sizeof(int)+1);
 	
-	close_pipes(fd);
+	//close_pipes(fd);
 }
 
 void itobuff(char *buff, int src){
@@ -129,11 +129,12 @@ void itobuff(char *buff, int src){
 	}
 }
 
-void bufftoi(int dest, char *buff){
+void bufftoi(int *dest, char *buff){
+	printf("bufftoi\n");
 	int i;
-	for(i=3; i>=0; i--){
-		dest=buff[i]&0xFF;
-		dest<<=8;
+	for(i=0; i<4; i++){
+		*dest<<=8;
+		*dest=buff[i]&0xFF;
 	}
 }
 
@@ -196,9 +197,16 @@ int main(int argc, char **argv){
 	}
 
 	//init pipe
-	int fd[2];
-	if(pipe(fd) == -1){
-		fprintf(stderr, "pipe failed\n");
+	int fd_p[2];
+	int fd_c[2];
+
+	if(pipe(fd_p) == -1){
+		fprintf(stderr, "pipe 1 failed\n");
+		return 1;
+	}
+
+	if(pipe(fd_c) == -1){
+		fprintf(stderr, "pipe 2 failed\n");
 		return 1;
 	}
 
@@ -207,11 +215,11 @@ int main(int argc, char **argv){
 
 	//code for parent to execute
 	if(pid > 0){
-		exec_parent(argv[1], fd);
+		exec_parent(argv[1], fd_c, fd_p);
 	}
 	//code for child to execute
 	else if(pid == 0){
-		exec_child(fd);
+		exec_child(fd_p, fd_c);
 	}
 	//code for error in fork()
 	else{
