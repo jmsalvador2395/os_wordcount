@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <string.h>
 #include <math.h>
 
@@ -29,7 +30,6 @@ unsigned char is_space(char *c);
  * *fd -> file descripters for pipe
  */
 void exec_parent(char *file, int *fd_p, int *fd_c){
-	printf("p: fd_p=%d, fd_c=%d\n", (int) fd_p[W], (int)fd_c[R]);
 	int wc_total=0;
 	unsigned int wc=0;
 
@@ -49,12 +49,17 @@ void exec_parent(char *file, int *fd_p, int *fd_c){
 	char bytes[BUFF_SIZE+1];
 	int i;
 	while(1){
-	//for(i=0;i<3;i++){
 
+		//read data from target file
 		fgets(w_msg, BUFF_SIZE, fp);
-
 		printf("p: read data from file\n");
+
+		//termination condition
 		if(strlen(w_msg)==0){
+			w_msg[BUFF_SIZE+1]=1;
+			write(fd_p[W], w_msg, BUFF_SIZE+2);
+			printf("p: sent termination signal\n");
+			
 			printf("p: exit\n");
 			break;
 		}
@@ -62,7 +67,7 @@ void exec_parent(char *file, int *fd_p, int *fd_c){
 		//send message buffer to c
 		write(fd_p[W], w_msg, strlen(w_msg)+1);
 		printf("p: sent data to c\n");
-		memset(w_msg, 0, BUFF_SIZE+1);
+		memset(w_msg, 0, BUFF_SIZE+2);
 
 		//read message buffer from c
 		printf("p: waiting for response\n");
@@ -78,11 +83,14 @@ void exec_parent(char *file, int *fd_p, int *fd_c){
 		printf("p: running total: %d\n", wc_total);
 	}
 
-	printf("p: pause\n");
+
+	//wait for child to exit
+	int status;
+	wait(&status);
+	printf("p: exit\n");
+
 	//print word count
 	printf("p: %d total words\n", wc_total);
-
-	printf("p: exit\n");
 
 	//close pipes
 	fclose(fp);
@@ -101,7 +109,7 @@ void exec_child(int *fd_p, int *fd_c){
 	close(fd_p[W]);
 	close(fd_c[R]);
 
-	//initialize message buffer. +1 for null character, +1 for header at idx 0
+	//initialize message buffer. +1 for null character. +1 for flags
 	unsigned char w_msg[BUFF_SIZE+2]={0};
 	char r_msg[BUFF_SIZE+2]={0};
 
@@ -109,14 +117,18 @@ void exec_child(int *fd_p, int *fd_c){
 	//buffer was a character or space/newline (1 for normal characters)
 	unsigned char flag=0x0;
 
-
 	int i=0;
 	while(1){
 		//read data from p
 		printf("c: waiting for data\n");
-		read(fd_p[R], r_msg, BUFF_SIZE);
+		read(fd_p[R], r_msg, BUFF_SIZE+2);
 		printf("c: received data from p\n");
 
+		//check for termination condition
+		if(r_msg[BUFF_SIZE+1] == 1){
+			printf("c: received termination signal\n");
+			break;
+		}
 		//count words
 		wc=count_words(r_msg, strlen(r_msg), &flag);
 		printf("c: counted words\n");
@@ -136,6 +148,10 @@ void exec_child(int *fd_p, int *fd_c){
 	close(fd_c[W]);
 }
 
+/*
+ * push integer bits into buffer.
+ * i should have just passed my data back as an integer but here i am.
+ */
 void itobuff(char *buff, int src){
 	int i;
 	for(i=3; i>=0; i--){
@@ -143,6 +159,10 @@ void itobuff(char *buff, int src){
 	}
 }
 
+/*
+ * convert buffer bits back into an integer. 
+ * again, i really shouldn't have wasted time doing this
+ */
 void bufftoi(int *dest, char *buff){
 	int i;
 	for(i=0; i<4; i++){
@@ -151,18 +171,30 @@ void bufftoi(int *dest, char *buff){
 	}
 }
 
+/*
+ * this is used to identify spaces or carriage returns
+ */
 unsigned char is_space(char *c){
 	if(*c == '\n' || *c == ' ')
 		return 1;
 	return 0;
 }
 
+/*
+ * counts the words in a given buffer
+ * flag is used to indicate whether or not the previous buffer
+ * ended with a space or not. 
+ * 1 if it ended with a normal char, 2 if it ended in a newline or space
+ */
 int count_words(char *msg, int msg_len, unsigned char *flag){
+	//why waste time if the length is 0;
 	if(msg_len == 0)
 		return 0;
 
+	//initialize count
 	int count=0;
 
+	//flag check
 	if(*flag && !is_space(&msg[0]))
 		count-=1;
 
@@ -201,10 +233,9 @@ int main(int argc, char **argv){
 		return 0;
 	}
 
-	//init pipe
+	//init pipes
 	int fd_p[2];
 	int fd_c[2];
-
 	if(pipe(fd_p) == -1 || pipe(fd_c) == -1){
 		fprintf(stderr, "pipe creation failed\n");
 		return 1;
