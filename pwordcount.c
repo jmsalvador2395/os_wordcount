@@ -39,7 +39,7 @@ void exec_parent(char *file, int *fd_p, int *fd_c){
 	//initialize message buffer. +1 for null character
 	char w_msg[BUFF_SIZE+2]={0};
 	unsigned char r_msg[BUFF_SIZE+2]={0};
-	
+
 	//open target file
 	FILE *fp;
 	fp=fopen(file,"r");
@@ -53,14 +53,16 @@ void exec_parent(char *file, int *fd_p, int *fd_c){
 		//read data from target file
 		fgets(w_msg, BUFF_SIZE, fp);
 		printf("p: read data from file\n");
+		printf("p: data: %02x\n", w_msg[0]);
 
 		//termination condition
 		if(strlen(w_msg)==0){
+
+			//append 1 to the very end of the buffer. idx=BUFF_SIZE+1
 			w_msg[BUFF_SIZE+1]=1;
 			write(fd_p[W], w_msg, BUFF_SIZE+2);
 			printf("p: sent termination signal\n");
 			
-			printf("p: exit\n");
 			break;
 		}
 
@@ -150,7 +152,8 @@ void exec_child(int *fd_p, int *fd_c){
 
 /*
  * push integer bits into buffer.
- * i should have just passed my data back as an integer but here i am.
+ * i should have just passed my data back as an integer
+ * but i'm too far into this now
  */
 void itobuff(char *buff, int src){
 	int i;
@@ -172,11 +175,18 @@ void bufftoi(int *dest, char *buff){
 }
 
 /*
- * this is used to identify spaces or carriage returns
+ * this is used to identify characters that separate words
+ * returns 1 if detected
+ * returns 0 if it's a normal character
  */
 unsigned char is_space(char *c){
-	if(*c == '\n' || *c == ' ')
+	if(    *c == '\n'	//newline
+		|| *c == ' '	//space
+		|| *c == 0x0D	//carriage return
+		|| *c == 0x09)	//tab
+	{
 		return 1;
+	}
 	return 0;
 }
 
@@ -208,13 +218,13 @@ int count_words(char *msg, int msg_len, unsigned char *flag){
 	
 	int i;
 	for(i=0; i<msg_len; i++){
-		if(msg[i] != '\n' && msg[i] != ' '){
+		if(!is_space(msg+i)){
 			if(break_prev){
 				count++;
 				break_prev=FALSE;
 			}
 		}
-		//goes here if a space or carriage return is encountered
+		//goes here if a word separator is encountered
 		else{
 			if(!break_prev)
 				break_prev=TRUE;
@@ -225,12 +235,18 @@ int count_words(char *msg, int msg_len, unsigned char *flag){
 }
 
 int main(int argc, char **argv){
-	
+
 	//check for input file name
 	if(argc < 2){
 		printf("input file name required\n");
 		printf("usage: ./pwordcount <file_name>\n");
-		return 0;
+		return 1;
+	}
+
+	//check if file exists
+	if(access(argv[1], F_OK) != 0){
+		fprintf(stderr, "file does not exist\n");
+		return 1;
 	}
 
 	//init pipes
@@ -255,7 +271,7 @@ int main(int argc, char **argv){
 	//code for error in fork()
 	else{
 		fprintf(stderr, "fork() failed\n");
-		return 2;
+		return 1;
 	}
 
 	return 0;
