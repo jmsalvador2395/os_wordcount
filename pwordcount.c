@@ -54,7 +54,6 @@ void exec_parent(char *file, int *fd_r, int *fd_w){
 
 		//send message buffer to p2
 		write(fd_w[W], w_msg,r_size+1);
-		memset(w_msg, 0, BUFF_SIZE+1);
 		printf("p1: sent data to p2\n");
 
 		//read message buffer from p2
@@ -70,6 +69,8 @@ void exec_parent(char *file, int *fd_r, int *fd_w){
 		//read new words
 		printf("\n");
 	}
+
+	sleep(2);
 	//print word count
 	printf("p1: %d total words\n", wc_total);
 
